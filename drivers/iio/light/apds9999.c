@@ -16,7 +16,6 @@
 #include <linux/iio/iio.h>
 #include <linux/iio/sysfs.h>
 #include <linux/math64.h>
-#include <linux/mod_devicetable.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
 #include <linux/unaligned.h>
@@ -101,10 +100,6 @@ static int apds9999_init(struct apds9999_data *data)
 	u8 regval;
 	int ret;
 
-	ret = devm_add_action_or_reset(dev, apds9999_standby, client);
-	if (ret)
-		return ret;
-
 	guard(mutex)(&data->lock);
 
 	regval = FIELD_PREP(APDS9999_LS_RES_MASK, APDS9999_RES_18BIT) |
@@ -122,8 +117,12 @@ static int apds9999_init(struct apds9999_data *data)
 		return ret;
 	data->als_gain_idx = APDS9999_GAIN_3X;
 
-	return i2c_smbus_write_byte_data(client, APDS9999_REG_MAIN_CTRL,
-					 APDS9999_MAIN_CTRL_LS_EN);
+	ret = i2c_smbus_write_byte_data(client, APDS9999_REG_MAIN_CTRL,
+					APDS9999_MAIN_CTRL_LS_EN);
+	if (ret)
+		return ret;
+
+	return devm_add_action_or_reset(dev, apds9999_standby, client);
 }
 
 static int apds9999_read_channel(struct apds9999_data *data, u8 reg,

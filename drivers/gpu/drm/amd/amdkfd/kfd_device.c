@@ -34,6 +34,7 @@
 #include "kfd_svm.h"
 #include "kfd_migrate.h"
 #include "amdgpu.h"
+#include "amdgpu_ip.h"
 #include "amdgpu_xcp.h"
 
 #define MQD_SIZE_ALIGNED 768
@@ -169,6 +170,8 @@ static void kfd_device_info_set_event_interrupt_class(struct kfd_dev *kfd)
 	case IP_VERSION(11, 5, 3):
 	case IP_VERSION(11, 5, 4):
 	case IP_VERSION(11, 5, 6):
+	case IP_VERSION(11, 7, 0):
+	case IP_VERSION(11, 7, 1):
 		kfd->device_info.event_interrupt_class = &event_interrupt_class_v11;
 		break;
 	case IP_VERSION(12, 0, 0):
@@ -451,6 +454,14 @@ struct kfd_dev *kgd2kfd_probe(struct amdgpu_device *adev, bool vf)
                         gfx_target_version = 110504;
                         f2g = &gfx_v11_kfd2kgd;
                         break;
+		case IP_VERSION(11, 7, 0):
+			gfx_target_version = 110700;
+			f2g = &gfx_v11_kfd2kgd;
+			break;
+		case IP_VERSION(11, 7, 1):
+			gfx_target_version = 110701;
+			f2g = &gfx_v11_kfd2kgd;
+			break;
 		case IP_VERSION(12, 0, 0):
 			gfx_target_version = 120000;
 			f2g = &gfx_v12_kfd2kgd;
@@ -942,7 +953,8 @@ bool kgd2kfd_device_init(struct kfd_dev *kfd,
 
 	svm_range_set_max_pages(kfd->adev);
 
-	kfd->init_complete = true;
+	/* Release pairs with the acquire in kfd_init_apertures(). */
+	smp_store_release(&kfd->init_complete, true);
 	dev_info(kfd_device, "added device %x:%x\n", kfd->adev->pdev->vendor,
 		 kfd->adev->pdev->device);
 
@@ -967,7 +979,7 @@ out:
 	return kfd->init_complete;
 }
 
-void kgd2kfd_device_exit(struct kfd_dev *kfd)
+void kgd2kfd_device_fini(struct kfd_dev *kfd)
 {
 	if (kfd->init_complete) {
 		/* Cleanup KFD nodes */
@@ -981,6 +993,11 @@ void kgd2kfd_device_exit(struct kfd_dev *kfd)
 	}
 
 	kfree(kfd);
+}
+
+void kgd2kfd_device_exit(struct kfd_dev *kfd)
+{
+	kgd2kfd_device_fini(kfd);
 
 	/* after remove a kfd device unlock kfd driver */
 	kgd2kfd_unlock_kfd(NULL);
@@ -1022,6 +1039,9 @@ int kgd2kfd_post_reset(struct kfd_dev *kfd)
 
 	if (!kfd->init_complete)
 		return 0;
+
+	for (i = 0; i < kfd->num_nodes; i++)
+		kfd_dqm_set_queues_as_reset(kfd->nodes[i]->dqm);
 
 	for (i = 0; i < kfd->num_nodes; i++) {
 		ret = kfd_resume(kfd->nodes[i]);
@@ -1502,8 +1522,11 @@ void kgd2kfd_smi_event_throttle(struct kfd_dev *kfd, uint64_t throttle_bitmask)
  */
 unsigned int kfd_get_num_sdma_engines(struct kfd_node *node)
 {
-	/* If XGMI is not supported, all SDMA engines are PCIe */
-	if (!node->adev->gmc.xgmi.supported)
+	/* If XGMI is not supported, all SDMA engines are PCIe.
+	 * Also, on GC 12.1, all SDMA engines are the same.
+	 */
+	if (!node->adev->gmc.xgmi.supported ||
+	    KFD_GC_VERSION(node->kfd) == IP_VERSION(12, 1, 0))
 		return node->adev->sdma.num_instances/(int)node->kfd->num_nodes;
 
 	return min(node->adev->sdma.num_instances/(int)node->kfd->num_nodes, 2);
@@ -1794,6 +1817,30 @@ void kgd2kfd_teardown_processes(struct amdgpu_device *adev)
 	/* wait all kfd processes use adev terminate */
 	while (!!atomic_read(&adev->kfd.dev->kfd_processes_count))
 		cond_resched();
+}
+
+int kgd2kfd_reset_mes_queue(struct kfd_dev *kfd, uint32_t node_id,
+			    int queue_type, int pipe, int queue,
+			    unsigned int db)
+{
+	struct kfd_node *node;
+	int ret;
+
+	if (!kfd->init_complete)
+		return 0;
+
+	if (node_id >= kfd->num_nodes) {
+		dev_warn(kfd->adev->dev, "Invalid node ID: %u exceeds %u\n",
+			 node_id, kfd->num_nodes - 1);
+		return -EINVAL;
+	}
+	node = kfd->nodes[node_id];
+
+	ret = kfd_reset_queue_mes(node->dqm, queue_type, pipe, queue, db);
+	if (ret)
+		dev_err(kfd_device, "Error resetting queue\n");
+
+	return ret;
 }
 
 #if defined(CONFIG_DEBUG_FS)

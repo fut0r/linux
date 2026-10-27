@@ -2161,6 +2161,9 @@ ssize_t drm_dp_mst_dpcd_read(struct drm_dp_aux *aux,
 	struct drm_dp_mst_port *port = container_of(aux, struct drm_dp_mst_port,
 						    aux);
 
+	if (!port->ddps)
+		return -EIO;
+
 	return drm_dp_send_dpcd_read(port->mgr, port,
 				     offset, size, buffer);
 }
@@ -2183,6 +2186,9 @@ ssize_t drm_dp_mst_dpcd_write(struct drm_dp_aux *aux,
 {
 	struct drm_dp_mst_port *port = container_of(aux, struct drm_dp_mst_port,
 						    aux);
+
+	if (!port->ddps)
+		return -EIO;
 
 	return drm_dp_send_dpcd_write(port->mgr, port,
 				      offset, size, buffer);
@@ -3740,8 +3746,10 @@ void drm_dp_mst_topology_queue_probe(struct drm_dp_mst_topology_mgr *mgr)
 {
 	mutex_lock(&mgr->lock);
 
-	if (drm_WARN_ON(mgr->dev, !mgr->mst_state || !mgr->mst_primary))
+	if (!mgr->mst_state || !mgr->mst_primary) {
+		drm_dbg_kms(mgr->dev, "queue_probe skipped: topology torn down\n");
 		goto out_unlock;
+	}
 
 	drm_dp_mst_topology_mgr_invalidate_mstb(mgr->mst_primary);
 	drm_dp_mst_queue_probe_work(mgr);

@@ -264,8 +264,11 @@ static int fbnic_set_mac(struct net_device *netdev, void *p)
 
 	eth_hw_addr_set(netdev, addr->sa_data);
 
-	if (netif_running(netdev))
+	if (netif_running(netdev)) {
+		netif_addr_lock_bh(netdev);
 		__fbnic_set_rx_mode(fbn->fbd, &netdev->uc, &netdev->mc);
+		netif_addr_unlock_bh(netdev);
+	}
 
 	return 0;
 }
@@ -310,8 +313,10 @@ void fbnic_clear_rx_mode(struct fbnic_dev *fbd)
 	/* Write updates to hardware */
 	fbnic_write_macda(fbd);
 
+	netif_addr_lock_bh(netdev);
 	__dev_uc_unsync(netdev, NULL);
 	__dev_mc_unsync(netdev, NULL);
+	netif_addr_unlock_bh(netdev);
 }
 
 static int fbnic_hwtstamp_get(struct net_device *netdev,
@@ -767,6 +772,10 @@ struct net_device *fbnic_netdev_alloc(struct fbnic_dev *fbd)
 	fbn->hpq_size = FBNIC_HPQ_SIZE_DEFAULT;
 	fbn->ppq_size = FBNIC_PPQ_SIZE_DEFAULT;
 	fbn->rcq_size = FBNIC_RCQ_SIZE_DEFAULT;
+
+	netdev->cfg->rings.rx_pending = fbn->rcq_size;
+	netdev->cfg->rings.rx_mini_pending = fbn->hpq_size;
+	netdev->cfg->rings.rx_jumbo_pending = fbn->ppq_size;
 
 	fbn->tx_usecs = FBNIC_TX_USECS_DEFAULT;
 	fbn->rx_usecs = FBNIC_RX_USECS_DEFAULT;

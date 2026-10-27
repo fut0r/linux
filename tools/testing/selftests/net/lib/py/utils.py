@@ -44,7 +44,7 @@ class cmd:
     Use bkg() instead to run a command in the background.
     """
     def __init__(self, comm, shell=None, fail=True, expect_fail=False, ns=None,
-                 background=False, host=None, timeout=5, ksft_ready=None,
+                 background=False, host=None, timeout=20, ksft_ready=None,
                  ksft_wait=None):
         if ns:
             if hasattr(ns, 'user_ns_path'):
@@ -113,7 +113,7 @@ class cmd:
 
         return stdout, stderr
 
-    def process(self, terminate=True, fail=None, expect_fail=False, timeout=5):
+    def process(self, terminate=True, fail=None, expect_fail=False, timeout=20):
         if fail is None:
             fail = not terminate
 
@@ -355,6 +355,28 @@ def wait_port_listen(port, proto="tcp", ns=None, host=None, sleep=0.005, deadlin
         if time.monotonic() > end:
             raise Exception("Waiting for port listen timed out")
         time.sleep(sleep)
+
+
+def _ctl_file_write(path, val):
+    with open(path, "w", encoding="utf-8") as fp:
+        fp.write(str(val))
+
+
+def ctl_file_write(path, val):
+    """
+    Write @val to a control file - a sysctl, a sysfs attribute, configfs...
+    and defer() restoring the old value, so needs a defer queue.
+
+    Writing a value which is already set is skipped, there is nothing
+    to restore in that case.
+    """
+    with open(path, "r", encoding="utf-8") as fp:
+        old = fp.read().strip()
+    if old == str(val):
+        return
+
+    _ctl_file_write(path, val)
+    defer(_ctl_file_write, path, old)
 
 
 def wait_file(fname, test_fn, sleep=0.005, deadline=5, encoding='utf-8'):

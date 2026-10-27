@@ -11,7 +11,7 @@
 #define _FSL_MC_H_
 
 #include <linux/device.h>
-#include <linux/mod_devicetable.h>
+#include <linux/device-id/fsl_mc.h>
 #include <linux/interrupt.h>
 #include <uapi/linux/fsl_mc.h>
 
@@ -336,7 +336,7 @@ struct fsl_mc_io {
 	u16 flags;
 	u32 portal_size;
 	phys_addr_t portal_phys_addr;
-	void __iomem *portal_virt_addr;
+	void __iomem *portal_virt_addr __counted_by_ptr(portal_size);
 	struct fsl_mc_device *dpmcp_dev;
 	union {
 		/*

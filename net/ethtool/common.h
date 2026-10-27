@@ -53,6 +53,8 @@ void ethtool_ringparam_get_cfg(struct net_device *dev,
 			       struct ethtool_ringparam *param,
 			       struct kernel_ethtool_ringparam *kparam,
 			       struct netlink_ext_ack *extack);
+void ethtool_ringparam_set_cfg(struct netdev_config *cfg,
+			       const struct ethtool_ringparam *param);
 
 int ethtool_get_rx_ring_count(struct net_device *dev);
 
@@ -113,6 +115,8 @@ ethtool_nl_msg_needs_rtnl(const struct net_device *dev, u8 cmd)
 		return ops->op_needs_rtnl & ETHTOOL_OP_NEEDS_RTNL_SPAUSEPARAM;
 	case ETHTOOL_MSG_RSS_SET:
 		return ops->op_needs_rtnl & ETHTOOL_OP_NEEDS_RTNL_RSS;
+	case ETHTOOL_MSG_LINKSTATE_GET:
+		return ops->op_needs_rtnl & ETHTOOL_OP_NEEDS_RTNL_GLINK;
 	case ETHTOOL_MSG_TSCONFIG_GET:
 	case ETHTOOL_MSG_TSCONFIG_SET:
 		/* tsconfig calls ndos (ndo_hwtstamp_set/get), not ethtool ops.
@@ -159,6 +163,10 @@ ethtool_ioctl_needs_rtnl(const struct net_device *dev, u32 ethcmd)
 	case ETHTOOL_SRXFH:
 	case ETHTOOL_SRXFHINDIR:
 		return ops->op_needs_rtnl & ETHTOOL_OP_NEEDS_RTNL_RSS;
+	case ETHTOOL_GLINK:
+		return ops->op_needs_rtnl & ETHTOOL_OP_NEEDS_RTNL_GLINK;
+	case ETHTOOL_TEST:
+		return ops->op_needs_rtnl & ETHTOOL_OP_NEEDS_RTNL_TEST;
 	}
 	return false;
 }

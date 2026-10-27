@@ -71,7 +71,7 @@ pvr_fw_trace_init_mask_set(const char *val, const struct kernel_param *kp)
 	return 0;
 }
 
-const struct kernel_param_ops pvr_fw_trace_init_mask_ops = {
+static const struct kernel_param_ops pvr_fw_trace_init_mask_ops = {
 	.set = pvr_fw_trace_init_mask_set,
 	.get = param_get_hexint,
 };
@@ -101,7 +101,6 @@ tracebuf_ctrl_init(void *cpu_ptr, void *priv)
 		pvr_fw_object_get_fw_addr(trace_buffer->buf_obj,
 					  &tracebuf_space->trace_buffer_fw_addr);
 
-		tracebuf_space->trace_buffer = trace_buffer->buf;
 		tracebuf_space->trace_pointer = 0;
 	}
 }

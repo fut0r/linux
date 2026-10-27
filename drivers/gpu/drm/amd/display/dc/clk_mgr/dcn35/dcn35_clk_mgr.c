@@ -29,8 +29,8 @@
 #include "dccg.h"
 #include "clk_mgr_internal.h"
 
-// For dce12_get_dp_ref_freq_khz
-#include "dce100/dce_clk_mgr.h"
+// For dcn10_get_dp_ref_freq_khz
+#include "dcn10/dcn10_clk_mgr.h"
 
 // For dcn20_update_clocks_update_dpp_dto
 #include "dcn20/dcn20_clk_mgr.h"
@@ -419,6 +419,7 @@ void dcn35_update_clocks(struct clk_mgr *clk_mgr_base,
 		if (new_clocks->zstate_support != DCN_ZSTATE_SUPPORT_DISALLOW &&
 				new_clocks->zstate_support != clk_mgr_base->clks.zstate_support) {
 			dcn35_smu_set_zstate_support(clk_mgr, new_clocks->zstate_support);
+			dm_helpers_enable_periodic_detection(clk_mgr_base->ctx, true);
 			clk_mgr_base->clks.zstate_support = new_clocks->zstate_support;
 		}
 
@@ -438,6 +439,7 @@ void dcn35_update_clocks(struct clk_mgr *clk_mgr_base,
 		if (new_clocks->zstate_support == DCN_ZSTATE_SUPPORT_DISALLOW &&
 				new_clocks->zstate_support != clk_mgr_base->clks.zstate_support) {
 			dcn35_smu_set_zstate_support(clk_mgr, DCN_ZSTATE_SUPPORT_DISALLOW);
+			dm_helpers_enable_periodic_detection(clk_mgr_base->ctx, false);
 			clk_mgr_base->clks.zstate_support = new_clocks->zstate_support;
 		}
 
@@ -756,7 +758,7 @@ void dcn35_init_clocks(struct clk_mgr *clk_mgr)
 	// to adjust dp_dto reference clock if ssc is enable otherwise to apply dprefclk
 	if (dcn35_is_spll_ssc_enabled(clk_mgr))
 		clk_mgr->dp_dto_source_clock_in_khz =
-			dce_adjust_dp_ref_freq_for_ss(clk_mgr_int, clk_mgr->dprefclk_khz);
+			dcn10_adjust_dp_ref_freq_for_ss(clk_mgr_int, clk_mgr->dprefclk_khz);
 	else
 		clk_mgr->dp_dto_source_clock_in_khz = clk_mgr->dprefclk_khz;
 
@@ -1344,7 +1346,7 @@ static unsigned int dcn35_get_max_clock_khz(struct clk_mgr *clk_mgr_base, enum c
 }
 
 static struct clk_mgr_funcs dcn35_funcs = {
-	.get_dp_ref_clk_frequency = dce12_get_dp_ref_freq_khz,
+	.get_dp_ref_clk_frequency = dcn10_get_dp_ref_freq_khz,
 	.get_dtb_ref_clk_frequency = dcn31_get_dtb_ref_freq_khz,
 	.update_clocks = dcn35_update_clocks,
 	.init_clocks = dcn35_init_clocks,
@@ -1358,7 +1360,7 @@ static struct clk_mgr_funcs dcn35_funcs = {
 };
 
 struct clk_mgr_funcs dcn35_fpga_funcs = {
-	.get_dp_ref_clk_frequency = dce12_get_dp_ref_freq_khz,
+	.get_dp_ref_clk_frequency = dcn10_get_dp_ref_freq_khz,
 	.update_clocks = dcn35_update_clocks_fpga,
 	.init_clocks = dcn35_init_clocks_fpga,
 	.get_dtb_ref_clk_frequency = dcn31_get_dtb_ref_freq_khz,
@@ -1497,7 +1499,7 @@ void dcn35_clk_mgr_construct(
 	clk_mgr->base.base.dprefclk_khz = dcn35_smu_get_dprefclk(&clk_mgr->base);
 	clk_mgr->base.base.clks.ref_dtbclk_khz = 600000;
 
-	dce_clock_read_ss_info(&clk_mgr->base);
+	dcn10_clock_read_ss_info(&clk_mgr->base);
 	/*when clk src is from FCH, it could have ss, same clock src as DPREF clk*/
 
 	dcn35_read_ss_info_from_lut(&clk_mgr->base);

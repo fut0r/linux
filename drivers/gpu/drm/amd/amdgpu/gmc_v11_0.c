@@ -26,6 +26,7 @@
 #include <drm/drm_cache.h>
 
 #include "amdgpu.h"
+#include "amdgpu_ip.h"
 #include "amdgpu_atomfirmware.h"
 #include "gmc_v11_0.h"
 #include "umc_v8_10.h"
@@ -108,13 +109,16 @@ static int gmc_v11_0_process_interrupt(struct amdgpu_device *adev,
 	bool write_fault = !!(entry->src_data[1] &
 			      AMDGPU_GMC9_FAULT_SOURCE_DATA_WRITE);
 	uint32_t status = 0;
+	uint32_t cam_index;
 	u64 addr;
 
 	addr = (u64)entry->src_data[0] << 12;
 	addr |= ((u64)entry->src_data[1] & 0xf) << 44;
 
 	if (retry_fault) {
-		int ret = amdgpu_gmc_handle_retry_fault(adev, entry, addr, 0, 0,
+		cam_index = entry->src_data[2] & 0x3ff;
+
+		int ret = amdgpu_gmc_handle_retry_fault(adev, entry, addr, cam_index, 0,
 							write_fault);
 		/* Returning 1 here also prevents sending the IV to the KFD */
 		if (ret == 1)
@@ -606,6 +610,8 @@ static void gmc_v11_0_set_gfxhub_funcs(struct amdgpu_device *adev)
 	case IP_VERSION(11, 5, 3):
 	case IP_VERSION(11, 5, 4):
 	case IP_VERSION(11, 5, 6):
+	case IP_VERSION(11, 7, 0):
+	case IP_VERSION(11, 7, 1):
 		adev->gfxhub.funcs = &gfxhub_v11_5_0_funcs;
 		break;
 	default:
@@ -641,10 +647,6 @@ static int gmc_v11_0_late_init(struct amdgpu_ip_block *ip_block)
 	int r;
 
 	r = amdgpu_gmc_allocate_vm_inv_eng(adev);
-	if (r)
-		return r;
-
-	r = amdgpu_gmc_ras_late_init(adev);
 	if (r)
 		return r;
 
@@ -781,6 +783,8 @@ static int gmc_v11_0_sw_init(struct amdgpu_ip_block *ip_block)
 	case IP_VERSION(11, 5, 3):
 	case IP_VERSION(11, 5, 4):
 	case IP_VERSION(11, 5, 6):
+	case IP_VERSION(11, 7, 0):
+	case IP_VERSION(11, 7, 1):
 		set_bit(AMDGPU_GFXHUB(0), adev->vmhubs_mask);
 		set_bit(AMDGPU_MMHUB0(0), adev->vmhubs_mask);
 		/*
@@ -851,6 +855,11 @@ static int gmc_v11_0_sw_init(struct amdgpu_ip_block *ip_block)
 	 * amdkfd will use VMIDs 8-15
 	 */
 	adev->vm_manager.first_kfd_vmid = adev->gfx.disable_kq ? 1 : 8;
+
+	amdgpu_vmid_mgr_set_vmid_mask(adev,
+				      GENMASK(adev->vm_manager.first_kfd_vmid - 1, 1),
+				      false);
+	amdgpu_vmid_mgr_set_vmid_mask(adev, GENMASK(AMDGPU_NUM_VMID - 1, 1), true);
 
 	amdgpu_vm_manager_init(adev);
 
@@ -1004,12 +1013,6 @@ static int gmc_v11_0_resume(struct amdgpu_ip_block *ip_block)
 	return 0;
 }
 
-static bool gmc_v11_0_is_idle(struct amdgpu_ip_block *ip_block)
-{
-	/* MC is always ready in GMC v11.*/
-	return true;
-}
-
 static int gmc_v11_0_wait_for_idle(struct amdgpu_ip_block *ip_block)
 {
 	/* There is no need to wait for MC idle in GMC v11.*/
@@ -1054,7 +1057,6 @@ const struct amd_ip_funcs gmc_v11_0_ip_funcs = {
 	.hw_fini = gmc_v11_0_hw_fini,
 	.suspend = gmc_v11_0_suspend,
 	.resume = gmc_v11_0_resume,
-	.is_idle = gmc_v11_0_is_idle,
 	.wait_for_idle = gmc_v11_0_wait_for_idle,
 	.set_clockgating_state = gmc_v11_0_set_clockgating_state,
 	.set_powergating_state = gmc_v11_0_set_powergating_state,

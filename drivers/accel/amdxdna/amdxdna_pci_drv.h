@@ -120,6 +120,7 @@ struct amdxdna_dev {
 
 	struct mutex			dev_lock; /* per device lock */
 	struct list_head		client_list;
+	struct mutex			client_lock; /* client_list */
 	struct amdxdna_fw_ver		fw_ver;
 	struct rw_semaphore		notifier_lock; /* for mmu notifier*/
 	struct workqueue_struct		*notifier_wq;
@@ -140,6 +141,13 @@ struct amdxdna_device_id {
 	unsigned short device;
 	u8 revision;
 	const struct amdxdna_dev_info *dev_info;
+};
+
+struct amdxdna_io_stats {
+	spinlock_t			lock; /* protect io stats */
+	int				job_depth;
+	u64				start_time;
+	u64				busy_time;
 };
 
 /*
@@ -168,6 +176,8 @@ struct amdxdna_client {
 	size_t				heap_usage;
 	size_t				total_bo_usage;
 	size_t				total_int_bo_usage;
+
+	struct amdxdna_io_stats		io_stats;
 };
 
 #define amdxdna_for_each_hwctx(client, hwctx_id, entry)		\

@@ -74,7 +74,7 @@ bool of_graph_is_present(const struct device_node *node)
 
 	struct device_node *port __free(device_node) = of_get_child_by_name(node, "port");
 
-	return !!port;
+	return port;
 }
 EXPORT_SYMBOL(of_graph_is_present);
 
@@ -1172,6 +1172,14 @@ of_fwnode_get_reference_args(const struct fwnode_handle *fwnode,
 	unsigned int i;
 	int ret;
 
+	/*
+	 * This function should return -ENOENT for out of bound indexes,
+	 * but the OF API uses signed indexes and consider negative indexes
+	 * as invalid. Catch them here to correctly implement the fwnode API.
+	 */
+	if ((int)index < 0)
+		return -ENOENT;
+
 	if (nargs_prop)
 		ret = of_parse_phandle_with_args(to_of_node(fwnode), prop,
 						 nargs_prop, index, &of_args);
@@ -1463,6 +1471,22 @@ static struct device_node *parse_gpio_compat(struct device_node *np,
 	return sup_args.np;
 }
 
+static struct device_node *parse_i2c_parent(struct device_node *np,
+					    const char *prop_name, int index)
+{
+	if (strcmp(prop_name, "i2c-parent"))
+		return NULL;
+
+	/* tc9563 (pci1179,0623) is <phandle addr>; every other user is bare phandles */
+	if (of_device_is_compatible(np, "pci1179,0623")) {
+		if (index)
+			return NULL;
+		return of_parse_phandle(np, prop_name, 0);
+	}
+
+	return of_parse_phandle(np, prop_name, index);
+}
+
 static struct device_node *parse_interrupts(struct device_node *np,
 					    const char *prop_name, int index)
 {
@@ -1554,6 +1578,7 @@ static const struct supplier_bindings of_supplier_bindings[] = {
 	{ .parse_prop = parse_resets, },
 	{ .parse_prop = parse_leds, },
 	{ .parse_prop = parse_backlight, },
+	{ .parse_prop = parse_i2c_parent, },
 	{ .parse_prop = parse_panel, },
 	{ .parse_prop = parse_msi_parent, },
 	{ .parse_prop = parse_pses, },
@@ -1651,12 +1676,12 @@ static bool of_is_fwnode_add_links_supported(void)
 		return true;
 
 	if (is_supported != -1)
-		return !!is_supported;
+		return is_supported;
 
 	is_supported = !((match_property_by_path("/soc", "compatible", "intel,ce4100-cp") >= 0) ||
 			 (match_property_by_path("/", "architecture", "OLPC") >= 0));
 
-	return !!is_supported;
+	return is_supported;
 }
 
 static int of_fwnode_add_links(struct fwnode_handle *fwnode)
